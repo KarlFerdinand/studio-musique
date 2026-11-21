@@ -106,7 +106,7 @@ button.main{background:var(--accent);border-color:var(--accent);color:var(--acce
 button.small{min-height:34px;padding:5px 11px;font-size:13px}
 button.confirm{background:var(--warn);border-color:var(--warn);color:#fff}
 button[disabled]{opacity:.5;cursor:default}
-input[type=search],input[type=url],input[type=text]{width:100%;font:400 16px var(--body);padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+input[type=search],input[type=url],input[type=text],input[type=password]{width:100%;font:400 16px var(--body);padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 label{font:600 12.5px var(--body);color:var(--muted);display:block;margin-bottom:5px}
 .filters{display:flex;gap:6px;flex-wrap:wrap}
 .filters button{min-height:34px;padding:4px 12px;font-size:13px;border-radius:999px}
@@ -134,6 +134,10 @@ pre{margin:0;padding:10px;border-radius:8px;background:var(--surface2);font:12px
 .empty{color:var(--muted);text-align:center;padding:18px 8px}
 .act{display:flex;flex-direction:column;gap:10px}
 .act p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+#lockscreen{position:fixed;inset:0;z-index:70;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px}
+#lockscreen[hidden]{display:none}
+.lockbox{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;max-width:320px}
+.lockbox .logo{width:64px;height:64px;border-radius:18px;background:linear-gradient(160deg,var(--hero-a),var(--hero-b));display:grid;place-items:center}
 </style>
 </head>
 <body>
@@ -178,6 +182,17 @@ pre{margin:0;padding:10px;border-radius:8px;background:var(--surface2);font:12px
   </div>
 </div>
 
+<div id="lockscreen" hidden>
+  <div class="lockbox">
+    <div class="logo" aria-hidden="true"><div class="eq"><i style="--h:35%"></i><i style="--h:70%"></i><i style="--h:50%"></i><i style="--h:90%"></i></div></div>
+    <h2>Studio Musique</h2>
+    <p class="muted" style="margin:0">Verrouillé. Déverrouille avec Face ID ou ton empreinte.</p>
+    <button class="main" id="unlockbtn" style="min-width:220px">Déverrouiller</button>
+    <div id="lockinfo" class="muted" style="font-size:13px;min-height:18px"></div>
+    <button class="small" id="lockforget">Oublier cet appareil</button>
+  </div>
+</div>
+
 <div class="sheet" id="cfgsheet" hidden>
   <div class="panel" role="dialog" aria-modal="true" aria-labelledby="cfg-title">
     <div class="grab"></div>
@@ -185,6 +200,7 @@ pre{margin:0;padding:10px;border-radius:8px;background:var(--surface2);font:12px
     <p class="muted" style="margin:0;font-size:13.5px">L’app lit et écrit dans ton dépôt GitHub privé. Ces informations restent sur cet appareil.</p>
     <div><label for="crepo">Dépôt privé</label><input type="text" id="crepo" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="compte/studio-musique-data"></div>
     <div><label for="ctok">Jeton GitHub (Contents : lecture et écriture, ce dépôt seulement)</label><input type="password" id="ctok" autocomplete="off" placeholder="github_pat_…"></div>
+    <div id="biosec" hidden style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:6px"><label style="margin:0">Verrouillage Face ID</label><div id="bioinfo" class="muted" style="font-size:13px"></div><div><button class="small" id="biobtn">Activer</button></div></div>
     <div id="cinfo" style="font-size:13px;min-height:20px"></div>
     <div class="row" style="justify-content:space-between">
       <button id="cforget" class="small">Oublier</button>
@@ -499,7 +515,7 @@ $('#q').addEventListener('input', renderPlaylists);
 
 /* ---------- réglages de connexion ---------- */
 function loadCfg() { try { const c = JSON.parse(localStorage.getItem('studio.cfg') || 'null'); return c && c.repo && c.token ? c : null; } catch (e) { return null; } }
-function openCfg() { $('#cfgsheet').hidden = false; $('#crepo').value = cfg ? cfg.repo : ''; $('#ctok').value = ''; $('#ctok').placeholder = cfg ? '•••• (inchangé si vide)' : 'github_pat_…'; $('#cinfo').textContent = ''; }
+function openCfg() { refreshBio(); $('#cfgsheet').hidden = false; $('#crepo').value = cfg ? cfg.repo : ''; $('#ctok').value = ''; $('#ctok').placeholder = cfg ? '•••• (inchangé si vide)' : 'github_pat_…'; $('#cinfo').textContent = ''; }
 function closeCfg() { $('#cfgsheet').hidden = true; }
 $('#gear').addEventListener('click', openCfg);
 $('#ccancel').addEventListener('click', closeCfg);
@@ -518,18 +534,88 @@ $('#csave').addEventListener('click', async () => {
     const j = await r.json();
     if (!j.private) { info.innerHTML = '<span class="chip warn">Dépôt public</span> Utilise un dépôt privé : l’état de ta bibliothèque y est écrit.'; return; }
     if (j.permissions && j.permissions.push === false) throw new Error('Ce jeton ne peut pas écrire dans le dépôt.');
-    try { localStorage.setItem('studio.cfg', JSON.stringify({ repo, token })); } catch (e) { throw new Error('Impossible de mémoriser sur cet appareil (navigation privée ?).'); }
+    try { localStorage.setItem('studio.cfg', JSON.stringify({ repo, token })); /* un nouveau jeton remplace le verrou : à réactiver */ } catch (e) { throw new Error('Impossible de mémoriser sur cet appareil (navigation privée ?).'); }
     cfg = { repo, token }; db = {}; etag = null; authErr = ''; closeCfg(); renderAll(); refresh();
   } catch (e) { info.innerHTML = '<span class="chip bad">Échec</span> ' + esc(e.message || 'Réseau injoignable.'); }
 });
-$('#cforget').addEventListener('click', () => { try { localStorage.removeItem('studio.cfg'); } catch (e) {} cfg = null; db = null; D = null; CMDS = []; etag = null; closeCfg(); renderAll(); });
+$('#cforget').addEventListener('click', () => { try { localStorage.removeItem('studio.cfg'); } catch (e) {} locked = false; cfg = null; db = null; D = null; CMDS = []; etag = null; closeCfg(); renderAll(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#cfgsheet').hidden) closeCfg(); });
+
+/* ---------- verrouillage Face ID / empreinte (WebAuthn) ---------- */
+const B64 = { enc: u => btoa(String.fromCharCode.apply(null, Array.from(u))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), dec: s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)) };
+const rnd = n => crypto.getRandomValues(new Uint8Array(n));
+let locked = false, hiddenAt = 0;
+const readRec = () => { try { return JSON.parse(localStorage.getItem('studio.cfg') || 'null'); } catch (e) { return null; } };
+const writeRec = r => localStorage.setItem('studio.cfg', JSON.stringify(r));
+const lockEnabled = () => { const r = readRec(); return !!(r && r.cred); };
+async function bioAvailable() { try { return !!(window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { return false; } }
+async function prfKey(assertion) {
+  const ext = assertion.getClientExtensionResults ? assertion.getClientExtensionResults() : {};
+  const v = ext.prf && ext.prf.results && ext.prf.results.first;
+  if (!v) return null;
+  const base = await crypto.subtle.importKey('raw', v, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new TextEncoder().encode('studio-musique') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+const getAssertion = (rec, withPrf) => navigator.credentials.get({ publicKey: { challenge: rnd(32), allowCredentials: [{ type: 'public-key', id: B64.dec(rec.cred) }], userVerification: 'required', timeout: 60000,
+  extensions: withPrf ? { prf: { eval: { first: B64.dec(rec.salt) } } } : undefined } });
+
+async function enableLock() {
+  if (!cfg) throw new Error('Connecte-toi d’abord.');
+  const cred = await navigator.credentials.create({ publicKey: { rp: { name: 'Studio Musique' }, user: { id: rnd(16), name: 'studio', displayName: 'Studio Musique' }, challenge: rnd(32),
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+    timeout: 60000, attestation: 'none', extensions: { prf: {} } } });
+  const rec = { repo: cfg.repo, cred: B64.enc(new Uint8Array(cred.rawId)), salt: B64.enc(rnd(32)) };
+  const a = await getAssertion(rec, true), key = await prfKey(a);
+  if (key) { const iv = rnd(12); rec.mode = 'prf'; rec.iv = B64.enc(iv); rec.ct = B64.enc(new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(cfg.token)))); }
+  else { rec.mode = 'gate'; rec.token = cfg.token; }
+  writeRec(rec);
+}
+async function disableLock() {
+  const rec = readRec(); if (!rec || !rec.cred) return;
+  if (!cfg) await unlockWith(rec);
+  writeRec({ repo: cfg.repo, token: cfg.token });
+}
+async function unlockWith(rec) {
+  const a = await getAssertion(rec, rec.mode === 'prf');
+  let token = rec.token;
+  if (rec.mode === 'prf') {
+    const key = await prfKey(a); if (!key) throw new Error('Clé Face ID indisponible.');
+    token = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: B64.dec(rec.iv) }, key, B64.dec(rec.ct)));
+  }
+  cfg = { repo: rec.repo, token }; db = {}; authErr = ''; etag = null;
+}
+function showLock(on) { $('#lockscreen').hidden = !on; locked = on; if (on) { const b = $('#unlockbtn'); setTimeout(() => b && b.focus(), 50); } }
+function lockNow() { cfg = null; db = null; D = null; CMDS = []; for (const k of Object.keys(FILES)) delete FILES[k]; etag = null; renderAll(); ['#p-apercu', '#p-pistes', '#p-dj', '#p-pilotage', '#plist'].forEach(q => { const e = $(q); if (e) e.innerHTML = ''; }); showLock(true); }
+async function tryUnlock(auto) {
+  const rec = readRec(); const info = $('#lockinfo'); if (!rec || !rec.cred) return;
+  info.textContent = '';
+  try { await unlockWith(rec); showLock(false); renderAll(); refresh(); }
+  catch (e) { info.textContent = auto ? '' : (e && e.name === 'NotAllowedError' ? 'Déverrouillage annulé ou refusé.' : 'Impossible de déverrouiller : ' + (e && e.message || 'erreur')); }
+}
+$('#unlockbtn').addEventListener('click', () => tryUnlock(false));
+$('#lockforget').addEventListener('click', () => { try { localStorage.removeItem('studio.cfg'); } catch (e) {} location.reload(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) hiddenAt = Date.now();
+  else if (lockEnabled() && !locked && Date.now() - hiddenAt > 60000) lockNow();
+});
+async function refreshBio() {
+  const sec = $('#biosec'), ok = await bioAvailable();
+  sec.hidden = !ok; if (!ok) return;
+  const r = readRec(), on = !!(r && r.cred);
+  $('#bioinfo').textContent = on ? (r.mode === 'prf' ? 'Actif : le jeton est chiffré et ne se déchiffre qu’avec Face ID ou ton empreinte. L’app se reverrouille après une minute en arrière-plan.' : 'Actif : l’app demande Face ID ou ton empreinte à l’ouverture et après une minute en arrière-plan.') : 'Inactif : l’app s’ouvre directement. Active-le pour qu’il faille Face ID ou ton empreinte.';
+  $('#biobtn').textContent = on ? 'Désactiver' : 'Activer';
+}
+$('#biobtn').addEventListener('click', async () => {
+  const info = $('#cinfo'); info.textContent = '';
+  try { if (lockEnabled()) await disableLock(); else await enableLock(); await refreshBio(); }
+  catch (e) { info.innerHTML = '<span class="chip bad">Face ID</span> ' + esc(e && e.name === 'NotAllowedError' ? 'Refusé ou annulé.' : (e && e.message || 'Échec')); }
+});
 
 /* ---------- démarrage ---------- */
 show(location.hash.slice(1));
-cfg = loadCfg(); db = cfg ? {} : null;
-renderAll();
-if (!cfg) openCfg(); else refresh();
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+if (lockEnabled()) { cfg = null; db = null; renderAll(); showLock(true); tryUnlock(true); }
+else { cfg = loadCfg(); db = cfg ? {} : null; renderAll(); if (!cfg) openCfg(); else refresh(); }
 setInterval(() => { if (!document.hidden) refresh(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { renderBanner(); renderHead(); }, 60000);

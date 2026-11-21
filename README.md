@@ -47,3 +47,9 @@ Ouvre l'adresse de la page, puis « Ajouter à l'écran d'accueil ». Au premier
 - Même avec le jeton, on ne peut déclencher que les actions de la liste blanche : pas de commande libre.
 - Le dépôt de données doit rester privé : `status.json` décrit ta bibliothèque. L'app refuse de se connecter à un dépôt public.
 - Un jeton perdu : révoque-le dans GitHub (Settings, Developer settings), puis crée-en un nouveau.
+
+## Verrouillage Face ID / empreinte
+Réglages (roue dentée), « Verrouillage Face ID », Activer. Ensuite l'app demande Face ID (ou l'empreinte) à l'ouverture et après une minute en arrière-plan.
+- Si le téléphone le permet, le jeton est chiffré et ne se déchiffre qu'avec Face ID. Sinon l'app est seulement verrouillée à l'écran (le texte des réglages indique le mode actif).
+- Ce n'est pas l'app qui reconnaît ton visage : c'est le téléphone, qui répond seulement « oui » ou « non ».
+- Utilise toujours l'app installée sur l'écran d'accueil : Safari et l'app installée ont chacune leur propre mémoire, donc le jeton se saisit une fois dans chacune.
